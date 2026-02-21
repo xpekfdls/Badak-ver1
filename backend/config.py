@@ -33,6 +33,11 @@ STRATEGY = {
     "sl_pct": 5.0,
     "trail_activation_pct": 1.0,
     "trail_distance_pct": 0.5,
+    "trail_tier2_activation_pct": 3.0,
+    "trail_tier2_distance_pct": 1.5,
+    "trail_tier3_activation_pct": 5.0,
+    "trail_tier3_distance_pct": 0.5,
+    "peak_ema_alpha": 0.1,
     "exit_mode": "trailing",
     "max_entries": 3,
     "entry_interval": 2,
@@ -53,12 +58,12 @@ SCENARIO_RULES = {
 }
 
 TRADE_DEFAULTS = {
-    "position_size_pct": 11.0,
-    "max_open_positions": 5,
+    "position_size_pct": 7.0,
+    "max_open_positions": 2,
     "buy_mode": "semi",                # auto / semi / manual
     "sell_mode": "trailing",           # trailing / manual
     "operating_fund_mode": "fixed",    # "fixed" = 고정금액, "balance" = 전재산
-    "operating_fund_amount": 100.0,    # fixed 모드일 때 운용 금액 (USDT)
+    "operating_fund_amount": 1000.0,   # fixed 모드일 때 운용 금액 (USDT)
     "target_symbol": "",               # 매매 대상 코인 ("" = 제한 없음)
     "cooldown_seconds": 300,           # 청산 후 재진입 대기 (초)
 }

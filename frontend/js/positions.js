@@ -55,6 +55,12 @@ const Positions = (() => {
                 ? ((pnl / 100) * margin).toFixed(2)
                 : '--';
 
+            // Estimate 0.1% round-trip market fees (0.05% entry + 0.05% exit)
+            // Fees apply to the entire position notional value, not just the margin
+            const feeEstimate = posValue * 0.001;
+            const netPnlUsdt = pnlUsdt !== '--' ? (parseFloat(pnlUsdt) - feeEstimate).toFixed(2) : '--';
+            const netPnlClass = netPnlUsdt !== '--' && parseFloat(netPnlUsdt) >= 0 ? 'positive' : 'negative';
+
             return `<tr data-id="${p.id}" data-symbol="${p.symbol}">
                 <td><strong>${p.symbol}</strong></td>
                 <td class="${isLong ? 'positive' : 'negative'}">${p.direction}</td>
@@ -64,6 +70,7 @@ const Positions = (() => {
                 <td>${markPrice}</td>
                 <td class="${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</td>
                 <td class="${pnlClass}">${pnlUsdt}</td>
+                <td class="${netPnlClass}">${netPnlUsdt}</td>
                 <td>${p.leverage}x</td>
                 <td>
                     <button class="btn-scale-in" onclick="Positions.scaleIn('${p.id}')">+</button>

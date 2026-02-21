@@ -147,9 +147,16 @@ class AutoTrader:
             return
 
         open_pos = get_open_positions()
-        if len(open_pos) >= self._get_max_positions():
+        from data.db import get_active_orders
+        active_orders = get_active_orders()
+        pending_entries = [o for o in active_orders if o.get("purpose") == "ENTRY"]
+        
+        total_slots_used = len(open_pos) + len(pending_entries)
+        max_positions = self._get_max_positions()
+        
+        if total_slots_used >= max_positions:
             if self._log:
-                self._log("DECIDE", f"{signal.symbol} → SKIP (max positions {len(open_pos)}/{self._get_max_positions()})")
+                self._log("DECIDE", f"{signal.symbol} → SKIP (max positions {total_slots_used}/{max_positions})")
             return
         for p in open_pos:
             if p["symbol"] == signal.symbol and p["direction"] == signal.direction:
@@ -158,7 +165,7 @@ class AutoTrader:
                 return
 
         fund = self._get_operating_fund()
-        usdt_amount = fund * self._get_position_size_pct() / 100
+        usdt_amount = fund * self._get_position_size_pct() / 100.0
 
         try:
             balance = get_account_balance()
@@ -290,12 +297,14 @@ class AutoTrader:
             entry_num = pos.get("num_entries", 1)
             leverage = pos.get("leverage", self._get_leverage())
 
-            initial_margin = pos.get("avg_price", 0) * pos.get("quantity", 0) / leverage
-            if initial_margin < 1:
-                fund = self._get_operating_fund()
-                initial_margin = fund * self._get_position_size_pct() / 100
+            # Base margin always explicit: Fund * (PosSize / 100)
+            fund = self._get_operating_fund()
+            base_margin = fund * (self._get_position_size_pct() / 100.0)
 
-            usdt_amount = initial_margin * scale_mult
+            # Example: Base 70, scale_mult 2.0
+            # entry_num 1 (1st scale-in, total 2) => 70 * (2.0 ^ 1) = 140
+            # entry_num 2 (2nd scale-in, total 3) => 70 * (2.0 ^ 2) = 280
+            usdt_amount = base_margin * (scale_mult ** entry_num)
 
             try:
                 balance = get_account_balance()

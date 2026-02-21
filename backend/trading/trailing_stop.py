@@ -176,17 +176,31 @@ class TrailingStopEngine:
             return ""
 
         act_pct = float(get_setting("trail_activation_pct", str(STRATEGY["trail_activation_pct"])))
-        dist_pct = float(get_setting("trail_distance_pct", str(STRATEGY["trail_distance_pct"])))
+        default_dist_pct = float(get_setting("trail_distance_pct", str(STRATEGY["trail_distance_pct"])))
+        tier2_act_pct = float(get_setting("trail_tier2_activation_pct", str(STRATEGY.get("trail_tier2_activation_pct", 3.0))))
+        tier2_dist_pct = float(get_setting("trail_tier2_distance_pct", str(STRATEGY.get("trail_tier2_distance_pct", 1.5))))
+        tier3_act_pct = float(get_setting("trail_tier3_activation_pct", str(STRATEGY.get("trail_tier3_activation_pct", 5.0))))
+        tier3_dist_pct = float(get_setting("trail_tier3_distance_pct", str(STRATEGY.get("trail_tier3_distance_pct", 0.5))))
+
         peak = pos.get("peak_price", avg_price)
         trail_active = bool(pos.get("trail_active", 0))
+        trail_tier = int(pos.get("trail_tier", 1))
 
         peak_changed = False
         state_changed = False
 
+        # EMA price calculation (smoothing out spikes)
+        alpha = float(get_setting("peak_ema_alpha", str(STRATEGY.get("peak_ema_alpha", 0.1))))
+        if "ema_price" not in pos:
+            pos["ema_price"] = price
+        else:
+            pos["ema_price"] = alpha * price + (1 - alpha) * pos["ema_price"]
+        ema_price = pos["ema_price"]
+
         if is_long:
-            if price > peak:
-                pos["peak_price"] = price
-                peak = price
+            if ema_price > peak:
+                pos["peak_price"] = ema_price
+                peak = ema_price
                 peak_changed = True
 
             profit_pct = (peak - avg_price) / avg_price * 100
@@ -198,14 +212,31 @@ class TrailingStopEngine:
                 if self._on_log:
                     self._on_log("TRAIL", f"{pos['symbol']} trailing activated at +{profit_pct:.2f}%, peak=${peak:.4f}")
 
+            dist_pct = default_dist_pct
+            new_tier = 1
+            if profit_pct >= tier3_act_pct:
+                dist_pct = tier3_dist_pct
+                new_tier = 3
+            elif profit_pct >= tier2_act_pct:
+                dist_pct = tier2_dist_pct
+                new_tier = 2
+            
+            if new_tier > trail_tier:
+                pos["trail_tier"] = new_tier
+                trail_tier = new_tier
+                state_changed = True
+                print(f"  [Trail] TIER {new_tier} ACTIVATED {pos['symbol']} dist={dist_pct}%")
+                if self._on_log:
+                    self._on_log("TRAIL", f"{pos['symbol']} trailing Tier {new_tier} activated. Distance: {dist_pct}%")
+
             if trail_active:
                 trail_stop = peak * (1 - dist_pct / 100)
                 if price <= trail_stop:
                     return "EXIT"
         else:
-            if price < peak or peak <= 0:
-                pos["peak_price"] = price
-                peak = price
+            if ema_price < peak or peak <= 0:
+                pos["peak_price"] = ema_price
+                peak = ema_price
                 peak_changed = True
 
             profit_pct = (avg_price - peak) / avg_price * 100
@@ -216,6 +247,23 @@ class TrailingStopEngine:
                 print(f"  [Trail] ACTIVATED {pos['symbol']} profit={profit_pct:.2f}% peak={peak}")
                 if self._on_log:
                     self._on_log("TRAIL", f"{pos['symbol']} trailing activated at +{profit_pct:.2f}%, peak=${peak:.4f}")
+
+            dist_pct = default_dist_pct
+            new_tier = 1
+            if profit_pct >= tier3_act_pct:
+                dist_pct = tier3_dist_pct
+                new_tier = 3
+            elif profit_pct >= tier2_act_pct:
+                dist_pct = tier2_dist_pct
+                new_tier = 2
+            
+            if new_tier > trail_tier:
+                pos["trail_tier"] = new_tier
+                trail_tier = new_tier
+                state_changed = True
+                print(f"  [Trail] TIER {new_tier} ACTIVATED {pos['symbol']} dist={dist_pct}%")
+                if self._on_log:
+                    self._on_log("TRAIL", f"{pos['symbol']} trailing Tier {new_tier} activated. Distance: {dist_pct}%")
 
             if trail_active:
                 trail_stop = peak * (1 + dist_pct / 100)
