@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coin Auto Trader</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=20260221d">
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="header-left">
+            <span class="logo">AutoTrader</span>
+            <select id="symbol-select" class="header-select">
+                <option value="">Loading...</option>
+            </select>
+            <div class="signal-tf">
+                <label class="target-label">Signal:</label>
+                <select id="tf-select" class="header-select">
+                    <option value="1m">1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m" selected>5m</option>
+                    <option value="15m">15m</option>
+                    <option value="30m">30m</option>
+                </select>
+                <span class="tip" data-tip="시그널 탐지용 타임프레임. 차트 분봉과는 별개">?</span>
+            </div>
+            <div class="leverage-ctrl">
+                <button class="btn-leverage-quick" data-lev="5" id="lev-5x">5x</button>
+                <button class="btn-leverage-quick active" data-lev="10" id="lev-10x">10x</button>
+                <span class="tip" data-tip="레버리지 배율. 높을수록 수익/손실이 비례하여 확대됩니다">?</span>
+            </div>
+            <div class="target-coin">
+                <label class="target-label">Target:</label>
+                <select id="target-symbol-select" class="header-select">
+                    <option value="">All Coins</option>
+                </select>
+                <span class="tip" data-tip="자동매매 대상 코인. All Coins=모니터링 중인 모든 코인 허용">?</span>
+            </div>
+            <select id="mode-select" class="header-select">
+                <option value="semi">Semi-Auto</option>
+                <option value="auto">Full Auto</option>
+                <option value="manual">Manual</option>
+            </select>
+            <span class="tip" data-tip="Semi=물타기 자동+진입 수동, Auto=시그널 감지 시 전자동, Manual=수동만">?</span>
+        </div>
+        <div class="header-right">
+            <div class="balance-display">
+                <span class="balance-label">Balance</span>
+                <span class="tip" data-tip="Futures 지갑 총 잔고 (USDT)">?</span>
+                <span id="balance-val" class="balance-val">--</span>
+                <span class="balance-currency">USDT</span>
+            </div>
+            <div class="pnl-display">
+                <span class="pnl-label">PnL</span>
+                <span class="tip" data-tip="(잔고 + 미실현) - 시드머니. hover하면 상세">?</span>
+                <span id="unrealized-pnl" class="pnl-val">--</span>
+            </div>
+            <button id="btn-emergency" class="btn-emergency" title="모든 포지션 즉시 시장가 청산 + 자동매매 중지">EMERGENCY</button>
+            <span id="conn-status" class="conn-dot disconnected" title="Disconnected"></span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <!-- Left: Chart -->
+        <section id="chart-section">
+            <div id="chart-header">
+                <div class="chart-header-row1">
+                    <span id="chart-symbol" class="chart-symbol">BTCUSDT</span>
+                    <span id="chart-price" class="chart-price">--</span>
+                    <span id="chart-change" class="chart-change">--</span>
+                    <div class="chart-24h" id="chart-24h">
+                        <span class="info-item">24h H <span id="h24-high" class="info-val">--</span></span>
+                        <span class="info-item">24h L <span id="h24-low" class="info-val">--</span></span>
+                        <span class="info-item">24h Vol <span id="h24-vol" class="info-val">--</span></span>
+                    </div>
+                </div>
+                <div class="chart-header-row2">
+                    <div class="chart-tf-btns" id="chart-tf-btns">
+                        <button class="ctf-btn" data-tf="1m">1m</button>
+                        <button class="ctf-btn active" data-tf="5m">5m</button>
+                        <button class="ctf-btn" data-tf="15m">15m</button>
+                        <button class="ctf-btn" data-tf="1h">1h</button>
+                        <button class="ctf-btn" data-tf="4h">4h</button>
+                        <button class="ctf-btn" data-tf="1d">1D</button>
+                    </div>
+                    <div class="chart-indicator-btns" id="chart-indicator-btns">
+                        <button class="ci-btn active" data-ind="sma">SMA</button>
+                        <button class="ci-btn" data-ind="ema">EMA</button>
+                        <button class="ci-btn" data-ind="bb">BB</button>
+                    </div>
+                </div>
+            </div>
+            <div id="chart-container"></div>
+        </section>
+
+        <!-- Right: Order Panel -->
+        <aside id="order-panel">
+            <div class="order-tabs">
+                <button class="tab active" data-tab="order">Order</button>
+                <button class="tab" data-tab="auto-settings">Strategy</button>
+                <button class="tab" data-tab="logs">Log</button>
+            </div>
+
+            <!-- Order Tab -->
+            <div id="tab-order" class="tab-content active">
+                <div class="order-type-btns">
+                    <button class="btn-order-type active" data-type="market">Market</button>
+                    <button class="btn-order-type" data-type="limit">Limit</button>
+                </div>
+
+                <div id="limit-price-row" class="form-row hidden">
+                    <label>Price</label>
+                    <div class="input-group">
+                        <input type="number" id="order-price" step="any" placeholder="0.00">
+                        <span class="input-suffix">USDT</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label>Amount</label>
+                    <div class="input-group">
+                        <input type="number" id="order-amount" step="any" placeholder="0.00" value="100">
+                        <span class="input-suffix">USDT</span>
+                    </div>
+                </div>
+
+                <div class="size-btns">
+                    <button class="btn-size" data-pct="10">10%</button>
+                    <button class="btn-size" data-pct="25">25%</button>
+                    <button class="btn-size" data-pct="50">50%</button>
+                    <button class="btn-size" data-pct="100">100%</button>
+                </div>
+
+                <div class="order-btns">
+                    <button id="btn-long" class="btn-trade btn-long">Long</button>
+                    <button id="btn-short" class="btn-trade btn-short">Short</button>
+                </div>
+            </div>
+
+            <!-- Strategy Tab -->
+            <div id="tab-auto-settings" class="tab-content">
+                <div class="settings-group">
+                    <h4>Entry</h4>
+                    <div class="setting-row">
+                        <label>Position Size <span class="tip" data-tip="가용자산 대비 1차 진입 비율. 예: 11%면 $100 중 $11 진입">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-pos-size" value="10" min="1" max="100">
+                            <span class="input-suffix">%</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Max Positions <span class="tip" data-tip="동시에 보유 가능한 최대 포지션 수">?</span></label>
+                        <input type="number" id="set-max-pos" value="5" min="1" max="20">
+                    </div>
+                    <div class="setting-row">
+                        <label>Scale-in Max <span class="tip" data-tip="물타기 포함 최대 진입 횟수. 3 = 1차 진입 + 물타기 2회">?</span></label>
+                        <input type="number" id="set-max-entries" value="3" min="1" max="10">
+                    </div>
+                    <div class="setting-row">
+                        <label>Scale Multiplier <span class="tip" data-tip="물타기 금액 배수. 2x = 1차 $11 → 2차 $22 → 3차 $44">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-scale-mult" value="2.0" step="0.1" min="1">
+                            <span class="input-suffix">x</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h4>Exit</h4>
+                    <div class="setting-row">
+                        <label>Trail Activation <span class="tip" data-tip="이 수익률에 도달하면 트레일링스탑이 활성화됩니다">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-trail-act" value="1.0" step="0.1" min="0.1">
+                            <span class="input-suffix">%</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Trail Distance <span class="tip" data-tip="최고점 대비 이만큼 하락하면 익절 실행. 값이 작을수록 빠르게 익절">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-trail-dist" value="0.5" step="0.1" min="0.1">
+                            <span class="input-suffix">%</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Stop Loss <span class="tip" data-tip="평균 진입가 대비 이 비율만큼 역행 시 손절. 서버 SL도 자동 설정됨">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-sl" value="5.0" step="0.1" min="0.5">
+                            <span class="input-suffix">%</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Cycle Mode <span class="tip" data-tip="물타기 후 평균가에 복귀하면 일부를 청산하여 리스크를 줄이는 순환매 기능">?</span></label>
+                        <label class="toggle">
+                            <input type="checkbox" id="set-cycle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>Cycle Sell <span class="tip" data-tip="순환매 시 청산할 포지션 비율. 50% = 보유량의 절반 청산">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-cycle-sell" value="50" min="10" max="90">
+                            <span class="input-suffix">%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h4>Operating Fund</h4>
+                    <div class="setting-row">
+                        <label>Fund Mode <span class="tip" data-tip="Fixed=고정금액만 사용, Balance=전재산 기준 운용. Fixed 권장">?</span></label>
+                        <select id="set-fund-mode" class="setting-select">
+                            <option value="fixed">Fixed Amount</option>
+                            <option value="balance">Entire Balance</option>
+                        </select>
+                    </div>
+                    <div class="setting-row" id="fund-amount-row">
+                        <label>Fund Amount <span class="tip" data-tip="Fixed 모드에서 실제 운용할 금액 (USDT). 이 금액의 비율로 진입/물타기">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-fund-amount" value="100" min="10">
+                            <span class="input-suffix">USDT</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Seed Money <span class="tip" data-tip="수익률 계산 기준 금액. 통계/저널 표시용이며 실제 매매에는 영향 없음">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-seed-money" value="1000" min="1">
+                            <span class="input-suffix">USDT</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Entry Interval <span class="tip" data-tip="물타기 간 최소 틱 간격. 2 = 진입 후 2틱 이상 지나야 다음 물타기 가능">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-entry-interval" value="2" min="1" max="10">
+                            <span class="input-suffix">ticks</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Cooldown <span class="tip" data-tip="포지션 청산 후 같은 코인 재진입 대기 시간. 연속 손실 방지용">?</span></label>
+                        <div class="input-group">
+                            <input type="number" id="set-cooldown" value="300" min="0" max="3600">
+                            <span class="input-suffix">sec</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="btn-save-settings" class="btn-primary btn-full">Save Settings</button>
+            </div>
+
+            <!-- Log Tab -->
+            <div id="tab-logs" class="tab-content">
+                <div class="log-controls">
+                    <select id="log-filter">
+                        <option value="ALL">All</option>
+                        <option value="SIGNAL">Signal</option>
+                        <option value="DECIDE">Decision</option>
+                        <option value="OPEN">Open</option>
+                        <option value="CLOSE">Close</option>
+                        <option value="ORDER">Order</option>
+                        <option value="TRAIL">Trail</option>
+                        <option value="STATUS">Status</option>
+                        <option value="WARN">Warning</option>
+                    </select>
+                    <button id="log-clear" class="btn-sm">Clear</button>
+                    <label class="log-auto-scroll">
+                        <input type="checkbox" id="log-autoscroll" checked> Auto
+                    </label>
+                </div>
+                <div id="log-feed"></div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Bottom Section -->
+    <section id="bottom-section">
+        <!-- Signal Feed -->
+        <div id="signal-panel">
+            <div class="panel-header">
+                <h3>Signals</h3>
+                <span id="signal-count" class="badge">0</span>
+            </div>
+            <div id="signal-feed"></div>
+        </div>
+
+        <!-- Positions / Trades / Journal -->
+        <div id="data-panel">
+            <div class="panel-tabs">
+                <button class="ptab active" data-ptab="positions">Positions <span id="pos-count" class="badge">0</span></button>
+                <button class="ptab" data-ptab="orders">Open Orders</button>
+                <button class="ptab" data-ptab="trades">Trade History</button>
+                <button class="ptab" data-ptab="journal">Journal</button>
+            </div>
+
+            <div id="ptab-positions" class="ptab-content active">
+                <div id="pos-update-bar" style="font-size:10px;color:#565d69;text-align:right;padding:2px 8px 0;height:14px"></div>
+                <table id="positions-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol <span class="tip" data-tip="거래 코인 심볼">?</span></th>
+                            <th>Direction <span class="tip" data-tip="LONG=가격 상승 배팅, SHORT=하락 배팅">?</span></th>
+                            <th>Value <span class="tip" data-tip="포지션 총 가치 (진입가 × 수량). 레버리지 반영된 실제 노출 금액">?</span></th>
+                            <th>Size <span class="tip" data-tip="보유 수량 (코인 단위)">?</span></th>
+                            <th>Entry <span class="tip" data-tip="평균 진입가 (물타기 반영)">?</span></th>
+                            <th>Mark <span class="tip" data-tip="현재 실시간 마크 가격">?</span></th>
+                            <th>PnL (%) <span class="tip" data-tip="레버리지 반영 수익률 (%)">?</span></th>
+                            <th>PnL (USDT) <span class="tip" data-tip="미실현 손익 금액 (USDT)">?</span></th>
+                            <th>Lev <span class="tip" data-tip="적용된 레버리지 배율">?</span></th>
+                            <th>Actions <span class="tip" data-tip="포지션 청산 또는 물타기 실행">?</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-body"></tbody>
+                </table>
+                <div id="positions-empty" class="empty-msg">No open positions</div>
+            </div>
+
+            <div id="ptab-orders" class="ptab-content">
+                <table id="orders-table">
+                    <thead>
+                        <tr>
+                            <th>Time <span class="tip" data-tip="주문 생성 시각">?</span></th>
+                            <th>Symbol</th>
+                            <th>Side <span class="tip" data-tip="BUY=매수, SELL=매도">?</span></th>
+                            <th>Type <span class="tip" data-tip="MARKET=시장가, LIMIT=지정가, STOP_MARKET=손절주문">?</span></th>
+                            <th>Qty <span class="tip" data-tip="주문 수량 (코인 단위)">?</span></th>
+                            <th>Price <span class="tip" data-tip="지정가 또는 스탑 가격. 시장가면 0">?</span></th>
+                            <th>Filled <span class="tip" data-tip="실제 체결된 수량">?</span></th>
+                            <th>Status <span class="tip" data-tip="PENDING=대기, NEW=접수, FILLED=체결, CANCELED=취소">?</span></th>
+                            <th>Slippage <span class="tip" data-tip="예상가 대비 실제 체결가 차이 (%). 높으면 불리하게 체결된 것">?</span></th>
+                            <th>Actions <span class="tip" data-tip="미체결 주문 취소">?</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-body"></tbody>
+                </table>
+                <div id="orders-empty" class="empty-msg">No open orders</div>
+            </div>
+
+            <div id="ptab-trades" class="ptab-content">
+                <table id="trades-table">
+                    <thead>
+                        <tr>
+                            <th>Time <span class="tip" data-tip="거래 시각">?</span></th>
+                            <th>Symbol</th>
+                            <th>PnL <span class="tip" data-tip="실현 손익 (바이낸스 기준)">?</span></th>
+                            <th>Reason <span class="tip" data-tip="TRAIL/SL/CYCLE_SELL/MANUAL">?</span></th>
+                            <th>Signal</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-body"></tbody>
+                </table>
+            </div>
+
+            <div id="ptab-journal" class="ptab-content">
+                <div class="journal-stats" id="journal-stats"></div>
+                <div id="equity-chart" style="height:200px;"></div>
+            </div>
+        </div>
+    </section>
+
+    <div id="tooltip-box"></div>
+    <div id="toast-container"></div>
+
+    <script src="/static/js/chart.js?v=20260221f"></script>
+    <script src="/static/js/orderForm.js?v=20260221d"></script>
+    <script src="/static/js/positions.js?v=20260221f"></script>
+    <script src="/static/js/orders.js?v=20260221d"></script>
+    <script src="/static/js/signals.js?v=20260221g"></script>
+    <script src="/static/js/journal.js?v=20260221d"></script>
+    <script src="/static/js/systemLog.js?v=20260221d"></script>
+    <script src="/static/js/app.js?v=20260221g"></script>
+    
+</body>
+</html>
